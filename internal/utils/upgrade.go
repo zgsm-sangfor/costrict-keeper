@@ -84,14 +84,16 @@ type UpgradeConfig struct {
 	Arch       string //硬件平台名
 	TargetPath string //指定安装目标路径(及文件名)
 	NoSetPath  bool   //不需要设置PATH。设置PATH可以让程序所在路径被自动搜索
+	VerifyTLS  bool   //进行TLS/SSL相关的安全校验
 }
 
 type Upgrader struct {
 	UpgradeConfig
 
-	packageName string //包名称
-	installDir  string
-	packageDir  string
+	packageName string       //包名称
+	installDir  string       //包文件的实际安装目录
+	packageDir  string       //包信息目录
+	client      *http.Client //HTTP客户端
 }
 
 // const SHENMA_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
@@ -115,87 +117,6 @@ nwIDAQAB
 -----END PUBLIC KEY-----`
 
 const SHENMA_BASE_URL = "https://zgsm.sangfor.com/costrict"
-
-//------------------------------------------------------------------------------
-//	Get data from cloud
-//------------------------------------------------------------------------------
-/**
- *	从云端获取一个文件的内容
- */
-func GetBytes(urlStr string, params map[string]string) ([]byte, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	req, err := http.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		return []byte{}, fmt.Errorf("GetBytes: %v", err)
-	}
-	vals := make(url.Values)
-	for k, v := range params {
-		vals.Set(k, v)
-	}
-	req.URL.RawQuery = vals.Encode()
-
-	rsp, err := client.Do(req)
-	if err != nil {
-		return []byte{}, fmt.Errorf("GetBytes: %v", err)
-	}
-	defer rsp.Body.Close()
-	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
-		rspBody, _ := io.ReadAll(rsp.Body)
-		return rspBody, fmt.Errorf("GetBytes('%s?%s') code:%d, error:%s",
-			urlStr, req.URL.RawQuery, rsp.StatusCode, string(rspBody))
-	}
-	return io.ReadAll(rsp.Body)
-}
-
-/**
- *	从服务器获取一个文件
- */
-func GetFile(urlStr string, params map[string]string, savePath string) error {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	req, err := http.NewRequest("GET", urlStr, nil)
-	if err != nil {
-		return fmt.Errorf("GetFile('%s') failed: %v", urlStr, err)
-	}
-	vals := make(url.Values)
-	for k, v := range params {
-		vals.Set(k, v)
-	}
-	req.URL.RawQuery = vals.Encode()
-
-	rsp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("GetFile('%s') failed: %v", urlStr, err)
-	}
-	defer rsp.Body.Close()
-	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
-		rspBody, _ := io.ReadAll(rsp.Body)
-		return fmt.Errorf("GetFile('%s', '%s') code: %d, error:%s",
-			urlStr, req.URL.RawQuery, rsp.StatusCode, string(rspBody))
-	}
-
-	// 创建一个文件用于保存
-	if err = os.MkdirAll(filepath.Dir(savePath), 0755); err != nil {
-		return fmt.Errorf("GetFile('%s'): MkdirAll('%s') error:%v", urlStr, savePath, err)
-	}
-	out, err := os.Create(savePath)
-	if err != nil {
-		return fmt.Errorf("GetFile('%s'): create('%s') error: %v", urlStr, savePath, err)
-	}
-	defer out.Close()
-
-	// 然后将响应流和文件流对接起来
-	_, err = io.Copy(out, rsp.Body)
-	if err != nil {
-		return fmt.Errorf("GetFile('%s'): copy error: %v", urlStr, err)
-	}
-	return err
-}
 
 //------------------------------------------------------------------------------
 //	VersionNumber
@@ -288,12 +209,113 @@ func (pkg *PackageVersion) Save(fname string) error {
 //	Upgrader
 //------------------------------------------------------------------------------
 
-func NewUpgrader(packageName string, cfg UpgradeConfig) *Upgrader {
+func NewUpgrader(packageName string, cfg UpgradeConfig, client *http.Client) *Upgrader {
 	u := &Upgrader{}
 	u.UpgradeConfig = cfg
 	u.packageName = packageName
 	u.correct()
+	u.client = client
 	return u
+}
+
+func (u *Upgrader) getHttpClient() *http.Client {
+	if u.client == nil {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: !u.VerifyTLS},
+			MaxIdleConns:    5,
+			IdleConnTimeout: 30,
+		}
+		u.client = &http.Client{Transport: tr}
+	}
+	return u.client
+}
+
+/**
+ *	Close the HTTP client and clean up resources
+ * @returns {error} Returns error if closing fails, nil on success
+ *	@description
+ *	- Closes idle HTTP connections to prevent resource leaks
+ *	- Should be called when the Upgrader is no longer needed
+ *	- Safe to call multiple times
+ *	@example
+ *	upgrader := NewUpgrader("mypkg", config)
+ *	defer upgrader.Close()
+ */
+func (u *Upgrader) Close() error {
+	if u.client != nil {
+		u.client.CloseIdleConnections()
+	}
+	return nil
+}
+
+/**
+ *	从云端获取一个文件的内容
+ */
+func (u *Upgrader) GetBytes(urlStr string, params map[string]string) ([]byte, error) {
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return []byte{}, fmt.Errorf("GetBytes: %v", err)
+	}
+	vals := make(url.Values)
+	for k, v := range params {
+		vals.Set(k, v)
+	}
+	req.URL.RawQuery = vals.Encode()
+
+	rsp, err := u.getHttpClient().Do(req)
+	if err != nil {
+		return []byte{}, fmt.Errorf("GetBytes: %v", err)
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
+		rspBody, _ := io.ReadAll(rsp.Body)
+		return rspBody, fmt.Errorf("GetBytes('%s?%s') code:%d, error:%s",
+			urlStr, req.URL.RawQuery, rsp.StatusCode, string(rspBody))
+	}
+	return io.ReadAll(rsp.Body)
+}
+
+/**
+ *	从服务器获取一个文件
+ */
+func (u *Upgrader) GetFile(urlStr string, params map[string]string, savePath string) error {
+	req, err := http.NewRequest("GET", urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("GetFile('%s') failed: %v", urlStr, err)
+	}
+	vals := make(url.Values)
+	for k, v := range params {
+		vals.Set(k, v)
+	}
+	req.URL.RawQuery = vals.Encode()
+
+	rsp, err := u.getHttpClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("GetFile('%s') failed: %v", urlStr, err)
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode < 200 || rsp.StatusCode >= 300 {
+		rspBody, _ := io.ReadAll(rsp.Body)
+		return fmt.Errorf("GetFile('%s', '%s') code: %d, error:%s",
+			urlStr, req.URL.RawQuery, rsp.StatusCode, string(rspBody))
+	}
+
+	// 创建一个文件用于保存
+	if err = os.MkdirAll(filepath.Dir(savePath), 0755); err != nil {
+		return fmt.Errorf("GetFile('%s'): MkdirAll('%s') error:%v", urlStr, savePath, err)
+	}
+	out, err := os.Create(savePath)
+	if err != nil {
+		return fmt.Errorf("GetFile('%s'): create('%s') error: %v", urlStr, savePath, err)
+	}
+	defer out.Close()
+
+	// 然后将响应流和文件流对接起来
+	_, err = io.Copy(out, rsp.Body)
+	if err != nil {
+		return fmt.Errorf("GetFile('%s'): copy error: %v", urlStr, err)
+	}
+	return err
 }
 
 /**
@@ -318,7 +340,7 @@ func (u *Upgrader) GetRemoteVersions() (PlatformInfo, error) {
 	//	<base-url>/<package>/<os>/<arch>/platform.json
 	urlStr := fmt.Sprintf("%s/%s/%s/%s/platform.json", u.BaseUrl, u.packageName, u.Os, u.Arch)
 
-	bytes, err := GetBytes(urlStr, nil)
+	bytes, err := u.GetBytes(urlStr, nil)
 	if err != nil {
 		return PlatformInfo{}, err
 	}
@@ -431,7 +453,7 @@ func (u *Upgrader) GetPackage(specVer *VersionNumber) (PackageVersion, bool, err
 		return pkg, true, nil
 	}
 	//	获取云端升级包的描述信息
-	data, err := GetBytes(u.BaseUrl+addr.InfoUrl, nil)
+	data, err := u.GetBytes(u.BaseUrl+addr.InfoUrl, nil)
 	if err != nil {
 		log.Printf("Get package info from '%s' failed: %v\n", addr.InfoUrl, err)
 		return pkg, false, err
@@ -452,7 +474,7 @@ func (u *Upgrader) GetPackage(specVer *VersionNumber) (PackageVersion, bool, err
 	//	下载包
 	_, fname := filepath.Split(pkg.FileName)
 	cacheFname := filepath.Join(cacheDir, fname)
-	if err = GetFile(u.BaseUrl+addr.AppUrl, nil, cacheFname); err != nil {
+	if err = u.GetFile(u.BaseUrl+addr.AppUrl, nil, cacheFname); err != nil {
 		log.Printf("Download package from '%s' to '%s' failed: %v\n", addr.AppUrl, cacheFname, err)
 		return pkg, false, err
 	}

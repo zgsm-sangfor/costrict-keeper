@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"costrict-keeper/internal/config"
 	"costrict-keeper/internal/env"
+	"costrict-keeper/internal/httpc"
 	"costrict-keeper/internal/logger"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,9 +46,12 @@ func uploadBuffer(r io.Reader, filePath string, targetURL string) error {
 	if err != nil {
 		return err
 	}
+
 	// 创建表单文件
 	body := &bytes.Buffer{}
 	multipartWriter := multipart.NewWriter(body)
+	defer multipartWriter.Close()
+
 	fileWriter, err := multipartWriter.CreateFormFile("logfile", filepath.Base(filePath))
 	if err != nil {
 		return fmt.Errorf("failed to create form file: %v", err)
@@ -59,8 +62,9 @@ func uploadBuffer(r io.Reader, filePath string, targetURL string) error {
 		return fmt.Errorf("failed to copy file to form: %v", err)
 	}
 	if err := multipartWriter.WriteField("args", string(data)); err != nil {
-		return err
+		return fmt.Errorf("failed to write args field: %v", err)
 	}
+	// 关闭 multipart writer 以完成表单数据
 	multipartWriter.Close()
 
 	// 创建请求
@@ -71,15 +75,14 @@ func uploadBuffer(r io.Reader, filePath string, targetURL string) error {
 	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
 	request.Header.Set("Authorization", "Bearer "+config.GetAuthConfig().AccessToken)
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	response, err := client.Do(request)
+	response, err := httpc.GetClient().Do(request)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %v", err)
 	}
 	defer response.Body.Close()
+
+	// 读取响应体以确保连接可以被重用
+	_, _ = io.Copy(io.Discard, response.Body)
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("failed to upload file: %s", response.Status)

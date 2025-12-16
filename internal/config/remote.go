@@ -2,6 +2,7 @@ package config
 
 import (
 	"costrict-keeper/internal/env"
+	"costrict-keeper/internal/httpc"
 	"costrict-keeper/internal/logger"
 	"costrict-keeper/internal/utils"
 	"fmt"
@@ -30,7 +31,7 @@ func fetchRemoteConfig(pkgName string) error {
 	u := utils.NewUpgrader(pkgName, utils.UpgradeConfig{
 		BaseUrl: fmt.Sprintf("%s/costrict", GetBaseURL()),
 		BaseDir: env.CostrictDir,
-	})
+	}, httpc.GetClient())
 
 	pkg, upgraded, err := u.UpgradePackage(nil)
 	if err != nil {

@@ -36,7 +36,8 @@ func upgradeComponent(component string, version string) error {
 	u := utils.NewUpgrader(component, utils.UpgradeConfig{
 		BaseUrl: config.Cloud().UpgradeUrl,
 		BaseDir: env.CostrictDir,
-	})
+	}, nil)
+	defer u.Close()
 
 	var specVer *utils.VersionNumber
 	if version != "" {

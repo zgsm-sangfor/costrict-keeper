@@ -1,9 +1,8 @@
-package tun
+package services
 
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	"costrict-keeper/internal/config"
 	"costrict-keeper/internal/env"
+	"costrict-keeper/internal/httpc"
 	"costrict-keeper/internal/logger"
 	"costrict-keeper/internal/models"
 	"costrict-keeper/internal/proc"
@@ -186,11 +186,7 @@ func (tun *TunnelInstance) allocMappingPort() error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	resp, err := client.Do(req)
+	resp, err := httpc.GetClient().Do(req)
 	if err != nil {
 		logger.Errorf("allocMappingPort failed - URL: %s, Body: %s, Error: %v", req.URL.String(), string(jsonBody), err)
 		return fmt.Errorf("failed to request manager: %w", err)

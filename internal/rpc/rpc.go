@@ -128,7 +128,6 @@ func deserializeResponse(resp *http.Response) (*HTTPResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	defer resp.Body.Close()
 	httpResp.Body = body
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return httpResp, nil

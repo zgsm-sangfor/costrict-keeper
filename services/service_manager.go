@@ -14,7 +14,6 @@ import (
 	"costrict-keeper/internal/logger"
 	"costrict-keeper/internal/models"
 	"costrict-keeper/internal/proc"
-	"costrict-keeper/internal/tun"
 	"costrict-keeper/internal/utils"
 )
 
@@ -33,7 +32,7 @@ type ServiceInstance struct {
 	spec        models.ServiceSpecification //服务的规格描述，由服务端下发
 	component   *ComponentInstance          //运行服务的组件，实现服务的具体逻辑
 	proc        *proc.ProcessInstance       //运行该服务的进程
-	tun         *tun.TunnelInstance         //支持该服务远程访问的隧道
+	tun         *TunnelInstance             //支持该服务远程访问的隧道
 	status      models.RunStatus            //服务状态
 	startTime   string                      //服务启动时间
 	port        int                         //服务侦听的端口
@@ -103,7 +102,7 @@ func newService(spec *models.ServiceSpecification, cpn *ComponentInstance, child
 	}
 	svc.proc = createProcessInstance(&svc.spec, svc.port)
 	if spec.Accessible == "remote" {
-		svc.tun = tun.CreateTunnel(spec.Name, []int{spec.Port})
+		svc.tun = CreateTunnel(spec.Name, []int{spec.Port})
 	}
 	return svc
 }
@@ -175,7 +174,7 @@ func (svc *ServiceInstance) GetProc() *proc.ProcessInstance {
 	return svc.proc
 }
 
-func (svc *ServiceInstance) GetTunnel() *tun.TunnelInstance {
+func (svc *ServiceInstance) GetTunnel() *TunnelInstance {
 	return svc.tun
 }
 
@@ -444,7 +443,7 @@ func (svc *ServiceInstance) OpenTunnel(ctx context.Context) error {
 	if svc.spec.Accessible != "remote" {
 		return nil
 	}
-	svc.tun = tun.CreateTunnel(svc.spec.Name, []int{svc.port})
+	svc.tun = CreateTunnel(svc.spec.Name, []int{svc.port})
 	if err := svc.tun.OpenTunnel(ctx); err != nil {
 		logger.Errorf("Start tunnel (%s:%d) failed: %v", svc.spec.Name, svc.port, err)
 		return err

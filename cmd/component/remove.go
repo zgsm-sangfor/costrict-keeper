@@ -48,7 +48,9 @@ func removeComponent(component string) error {
 	// Call RemovePackage function to remove package
 	u := utils.NewUpgrader(component, utils.UpgradeConfig{
 		BaseDir: env.CostrictDir,
-	})
+	}, nil)
+	defer u.Close()
+
 	if err := u.RemovePackage(nil); err != nil {
 		fmt.Printf("Failed to remove component '%s': %v\n", component, err)
 		return err

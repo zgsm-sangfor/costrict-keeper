@@ -49,7 +49,7 @@ func (u *Upgrader) GetRemotePlatforms() (PackageOverview, error) {
 	//	<base-url>/<package>/platforms.json
 	urlStr := fmt.Sprintf("%s/%s/platforms.json", u.BaseUrl, u.packageName)
 
-	bytes, err := GetBytes(urlStr, nil)
+	bytes, err := u.GetBytes(urlStr, nil)
 	if err != nil {
 		return PackageOverview{}, err
 	}
@@ -64,7 +64,7 @@ func (u *Upgrader) GetRemotePackages() (PackageList, error) {
 	//	<base-url>/packages.json
 	urlStr := fmt.Sprintf("%s/packages.json", u.BaseUrl)
 
-	bytes, err := GetBytes(urlStr, nil)
+	bytes, err := u.GetBytes(urlStr, nil)
 	if err != nil {
 		return PackageList{}, err
 	}

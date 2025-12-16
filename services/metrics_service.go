@@ -162,6 +162,9 @@ func collectServiceMetrics(service models.ServiceSpecification) error {
 		Transport: tr,
 	}
 
+	// Ensure connection pool is cleaned up
+	defer tr.CloseIdleConnections()
+
 	// Make HTTP request to service metrics endpoint
 	resp, err := client.Get(url)
 	if err != nil {

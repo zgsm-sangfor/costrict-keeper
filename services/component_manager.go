@@ -3,6 +3,7 @@ package services
 import (
 	"costrict-keeper/internal/config"
 	"costrict-keeper/internal/env"
+	"costrict-keeper/internal/httpc"
 	"costrict-keeper/internal/logger"
 	"costrict-keeper/internal/models"
 	"costrict-keeper/internal/utils"
@@ -93,7 +94,8 @@ func (ci *ComponentInstance) fetchComponentInfo() error {
 	u := utils.NewUpgrader(ci.spec.Name, utils.UpgradeConfig{
 		BaseUrl: config.Cloud().UpgradeUrl,
 		BaseDir: env.CostrictDir,
-	})
+	}, httpc.GetClient())
+
 	ci.needUpgrade = false
 	ci.installed = false
 	local, err := u.GetLocalVersion(nil)
@@ -131,7 +133,8 @@ func (ci *ComponentInstance) upgradeComponent() error {
 	u := utils.NewUpgrader(ci.spec.Name, utils.UpgradeConfig{
 		BaseUrl: config.Cloud().UpgradeUrl,
 		BaseDir: env.CostrictDir,
-	})
+	}, httpc.GetClient())
+
 	pkg, upgraded, err := u.UpgradePackage(nil)
 	if err != nil {
 		logger.Errorf("The '%s' upgrade failed: %v", ci.spec.Name, err)
@@ -162,7 +165,8 @@ func (ci *ComponentInstance) removeComponent() error {
 	}
 	u := utils.NewUpgrader(ci.spec.Name, utils.UpgradeConfig{
 		BaseDir: env.CostrictDir,
-	})
+	}, httpc.GetClient())
+
 	// Remove the package
 	if err := u.RemovePackage(nil); err != nil {
 		return fmt.Errorf("failed to remove component %s: %v", ci.spec.Name, err)
@@ -177,6 +181,19 @@ func (ci *ComponentInstance) removeComponent() error {
 	return nil
 }
 
+/**
+ * Initialize component manager with shared HTTP client
+ * @param {*http.Client} client - Shared HTTP client for communications
+ * @returns {error} Returns error if initialization fails, nil on success
+ * @description
+ * - Sets shared HTTP client for all component operations
+ * - Initializes all component instances from configuration
+ * - Fetches component information for all components and configurations
+ * - Sets up self component instance
+ * @throws
+ * - Component information fetch errors
+ * - Configuration parsing errors
+ */
 func (cm *ComponentManager) Init() error {
 	for _, cpn := range config.Spec().Configurations {
 		ci := ComponentInstance{
@@ -336,7 +353,7 @@ func (cm *ComponentManager) UpgradeAll() error {
 	}
 	u := utils.NewUpgrader("", utils.UpgradeConfig{
 		BaseDir: env.CostrictDir,
-	})
+	}, nil)
 	u.CleanupOldVersions()
 	return nil
 }

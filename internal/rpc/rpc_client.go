@@ -11,9 +11,8 @@ import (
 
 // httpClient HTTP客户端实现
 type httpClient struct {
-	config    *HTTPConfig
-	client    *http.Client
-	transport *http.Transport
+	config *HTTPConfig
+	client *http.Client
 }
 
 // NewHTTPClient 创建HTTP客户端实例
@@ -42,24 +41,24 @@ func NewHTTPClient(config *HTTPConfig) HTTPClient {
 		config = DefaultHTTPConfig()
 	}
 
-	client := &httpClient{
+	hc := &httpClient{
 		config: config,
 	}
 
 	// 初始化transport，但不立即连接
-	client.transport = &http.Transport{
+	transport := &http.Transport{
 		// 其他配置可以在这里设置
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return net.Dial(config.Network, config.Address)
 		},
 	}
 
-	client.client = &http.Client{
-		Transport: client.transport,
+	hc.client = &http.Client{
+		Transport: transport,
 		Timeout:   config.Timeout,
 	}
 
-	return client
+	return hc
 }
 
 /**
@@ -107,6 +106,7 @@ func (c *httpClient) Get(path string, params map[string]interface{}) (*HTTPRespo
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	httpResp, err := deserializeResponse(resp)
 	if err != nil {
@@ -173,6 +173,7 @@ func (c *httpClient) Post(path string, data interface{}) (*HTTPResponse, error) 
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	httpResp, err := deserializeResponse(resp)
 	if err != nil {
@@ -239,6 +240,7 @@ func (c *httpClient) Put(path string, data interface{}) (*HTTPResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	httpResp, err := deserializeResponse(resp)
 	if err != nil {
@@ -304,6 +306,7 @@ func (c *httpClient) Patch(path string, data interface{}) (*HTTPResponse, error)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	httpResp, err := deserializeResponse(resp)
 	if err != nil {
@@ -356,6 +359,7 @@ func (c *httpClient) Delete(path string, params map[string]interface{}) (*HTTPRe
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
 	httpResp, err := deserializeResponse(resp)
 	if err != nil {
@@ -382,9 +386,9 @@ func (c *httpClient) Close() error {
 		c.client.CloseIdleConnections()
 	}
 
-	if c.transport != nil {
-		c.transport.CloseIdleConnections()
-	}
+	// if c.transport != nil {
+	// 	c.transport.CloseIdleConnections()
+	// }
 
 	logger.Debugf("HTTP client connection closed")
 	return nil
