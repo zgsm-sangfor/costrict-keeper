@@ -1,11 +1,10 @@
-package client
+package service
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"costrict-keeper/cmd/root"
 	"costrict-keeper/internal/env"
 
 	"github.com/spf13/cobra"
@@ -33,5 +32,5 @@ func showKnowledge() {
 }
 
 func init() {
-	root.RootCmd.AddCommand(knownCmd)
+	serviceCmd.AddCommand(knownCmd)
 }
